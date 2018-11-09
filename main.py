@@ -36,10 +36,11 @@ if __name__ == '__main__':
 	filepath = '../../data/trajectories/ngsim.h5'
 	ngsim_filename='trajdata_i101_trajectories-0750am-0805am.txt'
 	x, feature_names = load_x_feature_names(filepath, ngsim_filename)
-	pdb.set_trace()
+	
 	clip_std_multiple = 10.
 	x, obs_mean, obs_std = normalize(x, clip_std_multiple)
-	
+    # x.shape = [2150, 1010, 66]
+	pdb.set_trace()
 	
 
 

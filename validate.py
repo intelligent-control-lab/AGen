@@ -42,88 +42,6 @@ def simulate(env, policy, max_steps, render=False, env_kwargs=dict()):
         x = nx
     return traj.flatten()
 
-# def mutliagent_simulate(
-#         env, 
-#         policy, 
-#         max_steps, 
-#         render=False, 
-#         env_kwargs=dict()):
-#     '''
-#     Description:
-#         - simulates a vectorized agent in a vectorized environment 
-
-#     Args:
-#         - env: env to simulate in, must be vectorized
-#         - policy: policy, must be vectorized
-#         - max_steps: max steps in env per episode
-#         - render: display visual
-#         - env_kwargs: key word arguments to pass to env 
-
-#     Returns:
-#         - a dictionary object with a bit of an unusual format:
-#             each value in the dictionary is an array with shape 
-#             (timesteps, n_env / n_veh, shape of attribute)
-#             i.e., first dim corresponds to time 
-#             second dim to the index of the agent
-#             third dim is for the attribute itself
-#     '''
-#     def collect_groundtruth():
-#         filepath = '../../data/trajectories/ngsim.h5'
-#         ngsim_filename='trajdata_i101_trajectories-0750am-0805am.txt'
-#         x, feature_names = utils.load_x_feature_names(filepath, ngsim_filename)
-#         clip_std_multiple = 10.
-#         obs, obs_mean, obs_std = utils.normalize(x, clip_std_multiple)
-#         return obs
-
-#     obs = collect_groundtruth()
-#     sample_means = []; sample_h = []; sample_r = []; sample_actions = []; sample_cord = []
-#     for k in range(1):   #obs.shape[0]):
-#         means = []; hidden_vecs = []; rnds = []; actions=[]; cord_x = []; cord_y = []
-#         for i in range(obs.shape[1]):
-#             x = env.reset(**env_kwargs)
-#             x[:66] = obs[k,i,:]
-#             n_agents = x.shape[0]
-#             traj = hgail.misc.simulation.Trajectory()
-#             dones = [True] * n_agents
-#             policy.reset(dones)
-#             for step in range(1):
-#                 if render: env.render()
-#                 a, a_info, hidden_vec, rnd = policy.get_actions(x)
-#                 nx, r, dones, e_info = env.step(a)
-#                 means.append(a_info['mean'])
-#                 actions.append(a)
-#                 hidden_vecs.append(hidden_vec)
-#                 rnds.append(rnd)
-#                 cord_x.append(e_info['orig_x'])
-#                 cord_y.append(e_info['orig_y'])
-#                 if any(dones): break
-#                 x = nx
-#         print(k)
-
-#         means = np.stack(means)
-#         hidden_vecs = np.stack(hidden_vecs)
-#         rnds = np.stack(rnds)
-#         actions = np.stack(actions)
-#         cord_x = np.stack(cord_x)
-#         cord_y = np.stack(cord_y)
-
-#     #     sample_means.append(means)
-#     #     sample_h.append(hidden_vecs)
-#     #     sample_r.append(np.stack(rnds).flatten())
-#     #     sample_actions.append(actions)
-#     # sample_means = np.stack(sample_means)
-#     # sample_h = np.stack(sample_h)
-#     # sample_r = np.stack(sample_r)
-#     # sample_actions = np.stack(sample_actions)
-#     np.savez('samplecord', cord_x=cord_x, cord_y=cord_y, rnds=rnds, input=obs[0,:,:], 
-#         means=means, hidden_vecs=hidden_vecs, actions=actions)
-#     #np.savez('0750am-0805amrnd', sample_actions=sample_actions, sample_r=sample_r, input=obs, means=sample_means, hidden_vecs=sample_h)
-#     print ("Successfully saved.")
-
-#     return traj.flatten()
-
-
-
 def online_adaption(
         env, 
         policy, 
@@ -131,70 +49,58 @@ def online_adaption(
         render=False, 
         env_kwargs=dict()):
 
-    # x is 68 dim input
-    data = np.load('./dataset/samplecord.npz')
-    xs = data['input']
-    obs_means = data['means']
-    acts = data['actions']
-    hidden_vecs = data['hidden_vecs']
+    obs = np.load('740805GTobs/sample/observation_sample101066.npy') #(1010, 66)
+    obs = np.expand_dims(obs, axis=1)
+    mean = np.load('740805GTobs/sample/accta_sample10102.npy') #(1010, 2)
+    mean = np.expand_dims(mean, axis=1)
     theta = np.load('theta.npy')
+    # theta = np.mean(theta)
     x = env.reset(**env_kwargs)
-
     n_agents = x.shape[0]
     dones = [True] * n_agents
     predicted_trajs = []
     policy.reset(dones)
-
-    # may need load top weight directly
+    prev_actions, prev_hiddens = None, None
+    # may need to initialize by mean
     adapnet = rls.rls(0.99, theta)
-    print(obs_means.shape)
-    for step in range(obs_means.shape[0]-1):
+    for step in range(mean.shape[0]-1):
         print("Rls update is running")
         # x here is the observation
-        adapnet.update(hidden_vecs[step,:], obs_means[step+1,:])
-        
-        traj = prediction(env_kwargs, np.expand_dims(xs[step+1,:],axis=0), adapnet, env, policy, hidden_vecs[step,:], acts[step, :])
+        a, a_info, hidden_vec = policy.get_actions_with_prev(obs[step+1,:], prev_actions, prev_hiddens)
+        adapnet.update(hidden_vec, mean[step+1,:])
+        prev_actions = np.reshape(a, [1, 2])
+        prev_hiddens = np.reshape(hidden_vec, [1, 64])
+        traj = prediction(env_kwargs, obs[step+1,:], adapnet, env, policy)
 
         predicted_trajs.append(traj)
 
     return predicted_trajs
 
-
-    #import pickle
-    #ilehandle = open('predicted_trajsall.npy', 'wb+')
-    #pickle.dump( np.array(predicted_trajs), filehandle, protocol=2 )
-    #utils.write_trajectories('predicted_trajsall.npz', np.array(predicted_trajs))
-    #np.save('predicted_trajsall.npy', np.array(predicted_trajs))
-    #  a = np.load('predicted_trajs.npz')['trajs']
-    # e_info={'s''orig_y''rmse_vel''is_colliding''rmse_t''hard_brake''orig_theta''phi'
-    #  'rmse_pos', 'y', 'orig_width', 'is_offroad', 'x','orig_x''orig_length'
-    # a_info={'prev_action', 'log_std', 'mean'
-
-
-
-def prediction(env_kwargs, x, adapnet, env, policy, prev_hiddens, prev_actions):
+def prediction(env_kwargs, x, adapnet, env, policy):
     traj = hgail.misc.simulation.Trajectory()
 
     predict_span = 25
-    a, a_info, hidden_vec = policy.get_actions_with_prev(x, np.reshape(prev_actions, [1, 2]), np.reshape(prev_hiddens, [1, 64]))
-
     for i in range(predict_span):
-
+        a, a_info, hidden_vec = policy.get_actions(x)
+        print ('predict_span'+str(i))
+    
         means = adapnet.predict(hidden_vec)
 
         rnd = np.random.normal(size=means.shape)
+        # log_std my need to be changed
+        log_std = np.log(np.std(adapnet.theta, axis=0))
+        # actions = means
+        # actions = rnd * np.exp(log_std) + means
         actions = rnd * np.exp(a_info['log_std']) + means
 
-        a_info["prev_action"] = np.copy(prev_actions)
-        a_info["mean"] = np.copy(means)
+        # a_info["prev_action"] = np.copy(prev_actions)
+        # a_info["mean"] = np.copy(means)
 
         nx, r, dones, e_info = env.step(actions)
         traj.add(x, actions, r, a_info, e_info)
         if any(dones): break
         x = nx
-        a, a_info, hidden_vec,_ = policy.get_actions(x)
-        print ('predict_span'+str(i))
-    
+        
     y = env.reset(**env_kwargs)
 
     return traj.flatten()
@@ -413,7 +319,7 @@ def collect(
     # validation setup 
     validation_dir = os.path.join(exp_dir, 'imitate', 'validation')
     utils.maybe_mkdir(validation_dir)
-    output_filepath = os.path.join(validation_dir, '{}_trajinit.npz'.format(
+    output_filepath = os.path.join(validation_dir, '{}_thetamean_changestd.npz'.format(
         args.ngsim_filename.split('.')[0]))
 
     with Timer():

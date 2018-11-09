@@ -10,10 +10,11 @@ class rls(object):
 		self.nn_dim = 65 # 64 # here you must add bias 
 		self.y_dim = 2
 
-		if theta.all() == 0:
+		if theta == 0:
 			self.theta = np.zeros([self.nn_dim, self.y_dim])
 		else:
-			self.theta = theta
+			# self.theta = theta
+			self.theta = theta*np.ones([self.nn_dim, self.y_dim])
 			print(self.theta.shape)
 
 		self.initialize()
@@ -47,6 +48,9 @@ class rls(object):
 			k = self.lbd + hidden_vec @ self.F @ hidden_vec.T
 			# 65 * 1
 			k = self.F @ hidden_vec.T / k
+			print(self.theta.shape)
+			print(obs_Y.shape)
+
 
 			self.theta[:,j] = self.theta[:,j] + k@(obs_Y[:,j]- hidden_vec@self.theta[:,j])
 
