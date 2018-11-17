@@ -8,11 +8,11 @@ import sys
 import tensorflow as tf
 import time
 
-backend = 'Agg' if sys.platform == 'linux' else 'TkAgg'
+backend ='TkAgg'
 import matplotlib
 matplotlib.use(backend)
 import matplotlib.pyplot as plt
-
+matplotlib.use('TkAgg')
 from contexttimer import Timer
 
 import hgail.misc.simulation
@@ -46,15 +46,18 @@ def online_adaption(
         env, 
         policy, 
         max_steps,  
+        obs,
+        mean,
         render=False, 
         env_kwargs=dict()):
 
-    obs = np.load('740805GTobs/sample/observation_sample101066.npy') #(1010, 66)
+    # obs = np.load('740805GTobs/sample/observation_sample101066.npy') #(1010, 66)
     obs = np.expand_dims(obs, axis=1)
-    mean = np.load('740805GTobs/sample/accta_sample10102.npy') #(1010, 2)
+    # mean = np.load('740805GTobs/sample/accta_sample10102.npy') #(1010, 2)
     mean = np.expand_dims(mean, axis=1)
     theta = np.load('theta.npy')
     # theta = np.mean(theta)
+    # print(theta)
     x = env.reset(**env_kwargs)
     n_agents = x.shape[0]
     dones = [True] * n_agents
@@ -62,18 +65,32 @@ def online_adaption(
     policy.reset(dones)
     prev_actions, prev_hiddens = None, None
     # may need to initialize by mean
-    adapnet = rls.rls(0.99, theta)
-    for step in range(mean.shape[0]-1):
-        print("Rls update is running")
+
+    adapnet = rls.rls(0.09, theta)
+    for step in range(1000):#mean.shape[0]-3):
+        #print("Rls update is running")
         # x here is the observation
+        print(step)
         a, a_info, hidden_vec = policy.get_actions_with_prev(obs[step+1,:], prev_actions, prev_hiddens)
+
         adapnet.update(hidden_vec, mean[step+1,:])
         prev_actions = np.reshape(a, [1, 2])
         prev_hiddens = np.reshape(hidden_vec, [1, 64])
+        
+        for fr in range(1, 1):
+            a, a_info, hidden_vec = policy.get_actions(obs[step+1+fr,:])
+            adapnet.update(hidden_vec, mean[step+fr,:])
+        adapnet.draw.append(adapnet.theta[6,1])
         traj = prediction(env_kwargs, obs[step+1,:], adapnet, env, policy)
 
         predicted_trajs.append(traj)
-
+    # np.save('theta', np.stack(adapnet.draw))
+    #plt.hold()  
+    d = np.stack(adapnet.draw)
+    print(d.shape)
+    for i in range(1):
+        plt.plot(range(step+1), d[:])
+    plt.show()
     return predicted_trajs
 
 def prediction(env_kwargs, x, adapnet, env, policy):
@@ -82,7 +99,7 @@ def prediction(env_kwargs, x, adapnet, env, policy):
     predict_span = 25
     for i in range(predict_span):
         a, a_info, hidden_vec = policy.get_actions(x)
-        print ('predict_span'+str(i))
+        #print ('predict_span'+str(i))
     
         means = adapnet.predict(hidden_vec)
 
@@ -90,8 +107,8 @@ def prediction(env_kwargs, x, adapnet, env, policy):
         # log_std my need to be changed
         log_std = np.log(np.std(adapnet.theta, axis=0))
         # actions = means
-        # actions = rnd * np.exp(log_std) + means
-        actions = rnd * np.exp(a_info['log_std']) + means
+        actions = rnd * np.exp(log_std) + means
+        # actions = rnd * np.exp(a_info['log_std']) + means
 
         # a_info["prev_action"] = np.copy(prev_actions)
         # a_info["mean"] = np.copy(means)
@@ -134,11 +151,9 @@ def mutliagent_simulate(
     traj = hgail.misc.simulation.Trajectory()
     dones = [True] * n_agents
     policy.reset(dones)
-    print(max_steps)
     for step in range(max_steps):
-        print(step)
         if render: env.render()
-        a, a_info, _, _ = policy.get_actions(x)
+        a, a_info,_ = policy.get_actions(x)
         nx, r, dones, e_info = env.step(a)
         traj.add(x, a, r, a_info, e_info)
         if any(dones): break
@@ -178,20 +193,29 @@ def collect_trajectories(
 
         # collect trajectories
         nids = len(egoids)
-
+        # obset = np.load('740805GTobs/sample/observation_sample101066.npy') #(1010, 66)
+        # meanset = np.load('740805GTobs/sample/acctr_sample10102.npy') #(1010, 2)
+        obset = np.load('740805GTobs/observation2150101066.npy') #(1010, 66)
+        meanset = np.load('740805GTobs/accta215010102.npy') #(1010, 2)
         #for i, egoid in enumerate(egoids):
-        for i in range(1):
+        for i in range(10):
+        # for i in range(1):
+            print(i)
             sys.stdout.write('\rpid: {} traj: {} / {}'.format(pid, i, nids))
 
             if args.env_multiagent:
                 kwargs = dict()
                 if random_seed:
                     kwargs = dict(random_seed=random_seed+egoid)
-                #traj = mutliagent_simulate(
+                # traj = mutliagent_simulate(
                 traj = online_adaption(
                     env, 
                     policy, 
                     max_steps=max_steps,
+                    # obs=obset,
+                    # mean=meanset,
+                    obs=obset[i,:,:],
+                    mean=meanset[i,:,:],
                     env_kwargs=kwargs
                 )
                 trajlist.append(traj)
@@ -286,7 +310,7 @@ def single_process_collect_trajectories(
         egoids, 
         starts,
         trajlist, 
-        1,
+        n_proc,
         env_fn,
         policy_fn,
         max_steps,
@@ -319,7 +343,7 @@ def collect(
     # validation setup 
     validation_dir = os.path.join(exp_dir, 'imitate', 'validation')
     utils.maybe_mkdir(validation_dir)
-    output_filepath = os.path.join(validation_dir, '{}_thetamean_changestd.npz'.format(
+    output_filepath = os.path.join(validation_dir, '{}_APSGAIL.npz'.format(
         args.ngsim_filename.split('.')[0]))
 
     with Timer():
@@ -392,6 +416,7 @@ if __name__ == '__main__':
     parser.add_argument('--random_seed', type=int, default=None)
     parser.add_argument('--n_envs', type=int, default=None)
     parser.add_argument('--remove_ngsim_vehicles', type=str2bool, default=False)
+    # parser.add_argument('--lbd', type=float, default=0.99)
 
     run_args = parser.parse_args()
 
@@ -447,4 +472,5 @@ if __name__ == '__main__':
             n_proc=run_args.n_proc,
             collect_fn=collect_fn,
             random_seed=run_args.random_seed
+            # lbd=run_args.lbd
         )

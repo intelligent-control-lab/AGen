@@ -3,7 +3,7 @@ import h5py
 import numpy as np
 
 NGSIM_FILENAME_TO_ID = {
-    'trajdata_i101_trajectories-0750am-0805am.txt': 1
+    'trajdata_i101-22agents-0750am-0805am.txt': 1
 }
 
 def normalize(x, clip_std_multiple=np.inf):
@@ -27,14 +27,14 @@ def load_x_feature_names(filepath, ngsim_filename):
             xs.append(f[str(i)])
         else:
             raise ValueError('invalid key to trajectory data: {}'.format(i))
-    
+    pdb.set_trace()
     x = np.concatenate(xs)
     feature_names = f.attrs['feature_names']
     return x, feature_names
 
 if __name__ == '__main__':
-	filepath = '../../data/trajectories/ngsim.h5'
-	ngsim_filename='trajdata_i101_trajectories-0750am-0805am.txt'
+	filepath = '../../data/trajectories/ngsim_22agents.h5'
+	ngsim_filename='trajdata_i101-22agents-0750am-0805am.txt'
 	x, feature_names = load_x_feature_names(filepath, ngsim_filename)
 	
 	clip_std_multiple = 10.

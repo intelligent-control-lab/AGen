@@ -1,6 +1,7 @@
 import numpy as np
 import scipy.linalg
 import pdb
+import matplotlib.pyplot as plt
 
 class rls(object):
 	"""docstring for ClassName"""
@@ -9,13 +10,14 @@ class rls(object):
 		self.lbd = lbd
 		self.nn_dim = 65 # 64 # here you must add bias 
 		self.y_dim = 2
+		self.draw = []
 
-		if theta == 0:
+		if theta.all() == 0:
 			self.theta = np.zeros([self.nn_dim, self.y_dim])
 		else:
 			# self.theta = theta
 			self.theta = theta*np.ones([self.nn_dim, self.y_dim])
-			print(self.theta.shape)
+			print('I\'m here')
 
 		self.initialize()
 
@@ -48,9 +50,6 @@ class rls(object):
 			k = self.lbd + hidden_vec @ self.F @ hidden_vec.T
 			# 65 * 1
 			k = self.F @ hidden_vec.T / k
-			print(self.theta.shape)
-			print(obs_Y.shape)
-
 
 			self.theta[:,j] = self.theta[:,j] + k@(obs_Y[:,j]- hidden_vec@self.theta[:,j])
 
@@ -58,9 +57,10 @@ class rls(object):
 							self.nn_dim*j:self.nn_dim*(j+1)] = self.F
 
 		pred = hidden_vec @ self.theta
-
+		
+		#plt.plot()
 		error = obs_Y - pred 
-
+		
 		self.rls_state.append(pred)
 
 
