@@ -17,7 +17,7 @@ def do_curriculum(args):
     # have that returned by decaying rewards, for non-decaying, manually track.
     base_exp_name = args.exp_name
     n_itr_each = args.n_itr
-
+    
     # initial params filepath to allow continuation mid curriculum training
     if args.load_params_init != 'NONE':
         print("starting at:", args.load_params_init)
@@ -86,6 +86,8 @@ def do_decaying_reward(args):
         
 # the normal function
 def run(args):
+    '''Namespace(batch_size=10000, critic_batch_size=1000, critic_dropout_keep_prob=0.8, critic_grad_rescale=40.0, critic_hidden_layer_dims=(128, 128, 64), critic_learning_rate=0.0004, decay_reward=False, discount=0.95, do_curriculum=False, env_H=200, env_action_repeat=1, env_multiagent=False, env_primesteps=50, env_reward=0, exp_dir='../../data/experiments', exp_name='singleagent_def_3', expert_filepath='../../data/trajectories/ngsim.h5', gradient_penalty=2.0, itrs_per_decay=25, latent_dim=4, load_params_init='NONE', max_path_length=1000, n_critic_train_epochs=40, n_envs=1, n_envs_end=50, n_envs_start=10, n_envs_step=10, n_itr=1000, n_recognition_train_epochs=30, ngsim_filename='trajdata_i101_trajectories-0750am-0805am.txt', normalize_clip_std_multiple=10.0, params_filepath='', policy_mean_hidden_layer_dims=(128, 128, 64), policy_recurrent=True, policy_std_hidden_layer_dims=(128, 64), recognition_hidden_layer_dims=(128, 64), recognition_learning_rate=0.0005, recurrent_hidden_dim=64, remove_ngsim_veh=False, render_every=25, reward_handler_critic_final_scale=1.0, reward_handler_max_epochs=100, reward_handler_recognition_final_scale=0.2, reward_handler_use_env_rewards=True, scheduler_k=20, trpo_step_size=0.01, use_critic_replay_memory=True, use_infogail=False, validator_render=False, vectorize=True)'''
+    
     print("loading from:", args.params_filepath)
     print("saving to:", args.exp_name)
     exp_dir = utils.set_up_experiment(exp_name=args.exp_name, phase='imitate')
@@ -96,6 +98,7 @@ def run(args):
 
     # build components
     env, act_low, act_high = utils.build_ngsim_env(args, exp_dir, vectorize=args.vectorize)
+    print(act_low, act_high)
     data = utils.load_data(
         args.expert_filepath, 
         act_low=act_low, 
@@ -104,7 +107,6 @@ def run(args):
         clip_std_multiple=args.normalize_clip_std_multiple,
         ngsim_filename=args.ngsim_filename
     )
-    print(args)
     critic = utils.build_critic(args, data, env, summary_writer)
     policy = utils.build_policy(args, env)
     recognition_model = utils.build_recognition_model(args, env, summary_writer)
@@ -179,5 +181,6 @@ if args.do_curriculum:
 elif args.decay_reward:
     do_decaying_reward(args)
 else:
+    print("in run seesion.")
     run(args)
 

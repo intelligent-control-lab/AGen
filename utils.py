@@ -1,7 +1,7 @@
 
 import h5py
 import numpy as np
-import os
+import os, pdb
 import tensorflow as tf
 
 from rllab.envs.base import EnvSpec
@@ -187,7 +187,8 @@ def build_critic(args, data, env, writer=None):
         batch_size=args.critic_batch_size,
         flat_recurrent=args.policy_recurrent
     )
-
+    import pdb
+    pdb.set_trace()
     critic_network = ObservationActionMLP(
         name='critic', 
         hidden_layer_dims=args.critic_hidden_layer_dims,
@@ -243,6 +244,7 @@ def build_policy(args, env, latent_sampler=None):
                 output_nonlinearity=None,
                 learn_std=True
             )
+            import pdb
         else:
             print("GaussianMLPPolicy")
             policy = GaussianMLPPolicy(

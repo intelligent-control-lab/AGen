@@ -22,8 +22,10 @@ import hyperparams
 import utils
 from utils import str2bool
 import rls, pdb
+import validate_utils
 
 def simulate(env, policy, max_steps, render=False, env_kwargs=dict()):
+    print(max_steps)
     traj = hgail.misc.simulation.Trajectory()
     x = env.reset(**env_kwargs)
     policy.reset()
@@ -51,46 +53,42 @@ def online_adaption(
         render=False, 
         env_kwargs=dict()):
 
-    # obs = np.load('740805GTobs/sample/observation_sample101066.npy') #(1010, 66)
     obs = np.expand_dims(obs, axis=1)
-    # mean = np.load('740805GTobs/sample/accta_sample10102.npy') #(1010, 2)
     mean = np.expand_dims(mean, axis=1)
     theta = np.load('theta.npy')
-    # theta = np.mean(theta)
-    # print(theta)
+    theta = np.mean(theta)
+
     x = env.reset(**env_kwargs)
     n_agents = x.shape[0]
     dones = [True] * n_agents
     predicted_trajs = []
     policy.reset(dones)
     prev_actions, prev_hiddens = None, None
-    # may need to initialize by mean
-
-    adapnet = rls.rls(0.09, theta)
+    adapnet = rls.rls(0.999, theta)
     for step in range(1000):#mean.shape[0]-3):
         #print("Rls update is running")
         # x here is the observation
-        print(step)
-        a, a_info, hidden_vec = policy.get_actions_with_prev(obs[step+1,:], prev_actions, prev_hiddens)
-
-        adapnet.update(hidden_vec, mean[step+1,:])
+        if step % 100 == 0:
+            print(step)
+        a, a_info, hidden_vec = policy.get_actions_with_prev(obs[step,:], mean[step,:], prev_hiddens)
+        
+        adap_vec = np.concatenate((hidden_vec, obs[step,:]), axis=1)
+        # obs_Y should be k+1 time
+        # hidden_vec should be k time
+        adapnet.update(adap_vec, mean[step+1,:])
         prev_actions = np.reshape(a, [1, 2])
         prev_hiddens = np.reshape(hidden_vec, [1, 64])
-        
-        for fr in range(1, 1):
-            a, a_info, hidden_vec = policy.get_actions(obs[step+1+fr,:])
-            adapnet.update(hidden_vec, mean[step+fr,:])
+
         adapnet.draw.append(adapnet.theta[6,1])
         traj = prediction(env_kwargs, obs[step+1,:], adapnet, env, policy)
-
         predicted_trajs.append(traj)
-    # np.save('theta', np.stack(adapnet.draw))
-    #plt.hold()  
+    
     d = np.stack(adapnet.draw)
-    print(d.shape)
+
     for i in range(1):
         plt.plot(range(step+1), d[:])
     plt.show()
+    print("where is my plot")
     return predicted_trajs
 
 def prediction(env_kwargs, x, adapnet, env, policy):
@@ -100,8 +98,8 @@ def prediction(env_kwargs, x, adapnet, env, policy):
     for i in range(predict_span):
         a, a_info, hidden_vec = policy.get_actions(x)
         #print ('predict_span'+str(i))
-    
-        means = adapnet.predict(hidden_vec)
+        adap_vec = np.concatenate((hidden_vec, x), axis=1)
+        means = adapnet.predict(adap_vec)
 
         rnd = np.random.normal(size=means.shape)
         # log_std my need to be changed
@@ -151,7 +149,8 @@ def mutliagent_simulate(
     traj = hgail.misc.simulation.Trajectory()
     dones = [True] * n_agents
     policy.reset(dones)
-    for step in range(max_steps):
+    
+    for step in range(1000):#max_steps):
         if render: env.render()
         a, a_info,_ = policy.get_actions(x)
         nx, r, dones, e_info = env.step(a)
@@ -175,6 +174,7 @@ def collect_trajectories(
         random_seed):
     env, _, _ = env_fn(args, alpha=0.)
     policy = policy_fn(args, env)
+
     with tf.Session() as sess:
         # initialize variables
         sess.run(tf.global_variables_initializer())
@@ -186,6 +186,7 @@ def collect_trajectories(
             policy = policy[0].algo.policy
         else:
             policy.set_param_values(params['policy'])
+        
         normalized_env = hgail.misc.utils.extract_normalizing_env(env)
         if normalized_env is not None:
             normalized_env._obs_mean = params['normalzing']['obs_mean']
@@ -193,29 +194,25 @@ def collect_trajectories(
 
         # collect trajectories
         nids = len(egoids)
-        # obset = np.load('740805GTobs/sample/observation_sample101066.npy') #(1010, 66)
-        # meanset = np.load('740805GTobs/sample/acctr_sample10102.npy') #(1010, 2)
-        obset = np.load('740805GTobs/observation2150101066.npy') #(1010, 66)
-        meanset = np.load('740805GTobs/accta215010102.npy') #(1010, 2)
-        #for i, egoid in enumerate(egoids):
+
+        data = validate_utils.get_ground_truth()
+        # this is where to get the ego running steps 
+        # for i, egoid in enumerate(egoids):
         for i in range(10):
-        # for i in range(1):
-            print(i)
-            sys.stdout.write('\rpid: {} traj: {} / {}'.format(pid, i, nids))
+            if i % 100 == 0:
+                sys.stdout.write('\rpid: {} traj: {} / {}'.format(pid, i, nids))
 
             if args.env_multiagent:
                 kwargs = dict()
                 if random_seed:
                     kwargs = dict(random_seed=random_seed+egoid)
-                # traj = mutliagent_simulate(
-                traj = online_adaption(
+                traj = mutliagent_simulate(
+                # traj = online_adaption(
                     env, 
                     policy, 
                     max_steps=max_steps,
-                    # obs=obset,
-                    # mean=meanset,
-                    obs=obset[i,:,:],
-                    mean=meanset[i,:,:],
+                    # obs=data['observations'][i, :,:],
+                    # mean=data['actions'][i,:,:],
                     env_kwargs=kwargs
                 )
                 trajlist.append(traj)
@@ -339,7 +336,6 @@ def collect(
     # load information relevant to the experiment
     params_filepath = os.path.join(exp_dir, 'imitate/log/{}'.format(params_filename))
     params = hgail.misc.utils.load_params(params_filepath)
-
     # validation setup 
     validation_dir = os.path.join(exp_dir, 'imitate', 'validation')
     utils.maybe_mkdir(validation_dir)
@@ -360,7 +356,7 @@ def collect(
 
     utils.write_trajectories(output_filepath, trajs)
 
-def load_egoids(filename, args, n_runs_per_ego_id=1, env_fn=utils.build_ngsim_env):
+def load_egoids(filename, args, n_runs_per_ego_id=1000, env_fn=utils.build_ngsim_env):
     offset = args.env_H + args.env_primesteps
     basedir = os.path.expanduser('~/.julia/v0.6/NGSIM/data/')
     ids_filename = filename.replace('.txt', '-index-{}-ids.h5'.format(offset))
@@ -408,7 +404,7 @@ if __name__ == '__main__':
     parser.add_argument('--n_proc', type=int, default=1)
     parser.add_argument('--exp_dir', type=str, default='../../data/experiments/gail/')
     parser.add_argument('--params_filename', type=str, default='itr_2000.npz')
-    parser.add_argument('--n_runs_per_ego_id', type=int, default=1)
+    parser.add_argument('--n_runs_per_ego_id', type=int, default=1000)
     parser.add_argument('--use_hgail', type=str2bool, default=False)
     parser.add_argument('--use_multiagent', type=str2bool, default=False)
     parser.add_argument('--n_multiagent_trajs', type=int, default=10000)
@@ -430,16 +426,6 @@ if __name__ == '__main__':
         collect_fn = single_process_collect_trajectories
     else:
         collect_fn = parallel_collect_trajectories
-
-    # Raunak commented this out since i80 trajectories not required for validation
-#    filenames = [
-#        "trajdata_i101_trajectories-0750am-0805am.txt",
-#        "trajdata_i101_trajectories-0805am-0820am.txt",
-#        "trajdata_i101_trajectories-0820am-0835am.txt",
-#        "trajdata_i80_trajectories-0400-0415.txt",
-#        "trajdata_i80_trajectories-0500-0515.txt",
-#        "trajdata_i80_trajectories-0515-0530.txt"
-#    ]
 
     filenames = [
         "trajdata_i101_trajectories-0750am-0805am.txt"
@@ -472,5 +458,4 @@ if __name__ == '__main__':
             n_proc=run_args.n_proc,
             collect_fn=collect_fn,
             random_seed=run_args.random_seed
-            # lbd=run_args.lbd
         )

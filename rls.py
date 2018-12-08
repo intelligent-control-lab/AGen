@@ -8,16 +8,16 @@ class rls(object):
 	def __init__(self, lbd, theta):
 
 		self.lbd = lbd
-		self.nn_dim = 65 # 64 # here you must add bias 
+		self.nn_dim = 131 # 64 # here you must add bias # hidden 64 + observe 66 + bias 1= 131
 		self.y_dim = 2
 		self.draw = []
 
-		if theta.all() == 0:
-			self.theta = np.zeros([self.nn_dim, self.y_dim])
-		else:
-			# self.theta = theta
-			self.theta = theta*np.ones([self.nn_dim, self.y_dim])
-			print('I\'m here')
+		# if theta.all() == 0:
+		# 	self.theta = np.zeros([self.nn_dim, self.y_dim])
+		# else:
+		# 	# self.theta = theta
+		self.theta = theta*np.ones([self.nn_dim, self.y_dim])
+		print('I\'m here')
 
 		self.initialize()
 
@@ -37,6 +37,8 @@ class rls(object):
 
 	# rls.update(hidden_vec, obs_Y[i,:])
 	def update(self, hidden_vec, obs_Y):
+		# obs_Y should be k+1 time
+		# hidden_vec should be k time
 		hidden_vec = np.concatenate([hidden_vec, np.ones([1,1])], axis=1)
 
 		for j in range(self.y_dim):
@@ -45,7 +47,7 @@ class rls(object):
 			self.F = self.F_M[self.nn_dim*j:self.nn_dim*(j+1), 
 							self.nn_dim*j:self.nn_dim*(j+1)]
 			# 65*65
-			#pdb.set_trace()
+			
 			# 1*1
 			k = self.lbd + hidden_vec @ self.F @ hidden_vec.T
 			# 65 * 1
@@ -58,7 +60,6 @@ class rls(object):
 
 		pred = hidden_vec @ self.theta
 		
-		#plt.plot()
 		error = obs_Y - pred 
 		
 		self.rls_state.append(pred)
