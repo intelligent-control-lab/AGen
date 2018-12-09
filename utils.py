@@ -44,7 +44,8 @@ NGSIM_FILENAME_TO_ID = {
     'trajdata_i80_trajectories-0515-0530.txt': 6
 }'''
 NGSIM_FILENAME_TO_ID = {
-    'trajdata_i101_trajectories-0750am-0805am.txt': 1
+    # 'trajdata_i101_trajectories-0750am-0805am.txt': 1,
+    'trajdata_i101-22agents-0750am-0805am.txt' : 1
 }
 
 '''
@@ -446,9 +447,12 @@ def normalize_range(x, low, high):
     return x
 
 def load_x_feature_names(filepath, ngsim_filename):
+    print(filepath)
     f = h5py.File(filepath, 'r')
     xs = []
+
     traj_id = NGSIM_FILENAME_TO_ID[ngsim_filename]
+
     # in case this nees to allow for multiple files in the future
     traj_ids = [traj_id]
     for i in traj_ids:

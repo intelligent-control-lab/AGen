@@ -24,26 +24,6 @@ from utils import str2bool
 import rls, pdb
 import validate_utils
 
-def simulate(env, policy, max_steps, render=False, env_kwargs=dict()):
-    print(max_steps)
-    traj = hgail.misc.simulation.Trajectory()
-    x = env.reset(**env_kwargs)
-    policy.reset()
-    for step in range(max_steps):
-        if render: env.render()
-        a, a_info = policy.get_action(x)
-        nx, r, done, e_info = env.step(a)
-        traj.add(
-            policy.observation_space.flatten(x), 
-            a, 
-            r, 
-            a_info,
-            e_info
-        )
-        if done: break
-        x = nx
-    return traj.flatten()
-
 def online_adaption(
         env, 
         policy, 
@@ -53,8 +33,7 @@ def online_adaption(
         render=False, 
         env_kwargs=dict()):
 
-    obs = np.expand_dims(obs, axis=1)
-    mean = np.expand_dims(mean, axis=1)
+
     theta = np.load('theta.npy')
     theta = np.mean(theta)
 
@@ -64,52 +43,82 @@ def online_adaption(
     predicted_trajs = []
     policy.reset(dones)
     prev_actions, prev_hiddens = None, None
-    adapnet = rls.rls(0.999, theta)
-    for step in range(1000):#mean.shape[0]-3):
-        #print("Rls update is running")
-        # x here is the observation
-        if step % 100 == 0:
-            print(step)
-        a, a_info, hidden_vec = policy.get_actions_with_prev(obs[step,:], mean[step,:], prev_hiddens)
-        
-        adap_vec = np.concatenate((hidden_vec, obs[step,:]), axis=1)
-        # obs_Y should be k+1 time
-        # hidden_vec should be k time
-        adapnet.update(adap_vec, mean[step+1,:])
-        prev_actions = np.reshape(a, [1, 2])
-        prev_hiddens = np.reshape(hidden_vec, [1, 64])
+    adapnets = []
 
-        adapnet.draw.append(adapnet.theta[6,1])
-        traj = prediction(env_kwargs, obs[step+1,:], adapnet, env, policy)
-        predicted_trajs.append(traj)
+    max_steps = min(1000, obs.shape[1])
+    if n_agents > 1:
+        obs = np.expand_dims(obs, axis=2)
+        mean = np.expand_dims(mean, axis=2)
     
-    d = np.stack(adapnet.draw)
+        for i in range(n_agents):
+            adapnets.append(rls.rls(0.999, theta))
+        for step in range(max_steps-1):
+            if step % 100 == 0:
+                print(step)
+            a, a_info, hidden_vec = policy.get_actions_with_prev(obs[:,step,:], mean[:, step,:], prev_hiddens)
 
-    for i in range(1):
-        plt.plot(range(step+1), d[:])
+            adap_vec = np.concatenate((np.expand_dims(hidden_vec, axis=1), obs[:,step,:]), axis=2)
+            
+            for i in range(n_agents):
+                adapnets[i].update(adap_vec[i], mean[i,step+1,:])
+                adapnets[i].draw.append(adapnets[i].theta[6,1])
+
+            prev_actions = np.reshape(a, [-1, 2])
+            prev_hiddens = np.reshape(hidden_vec, [-1, 64])
+
+            traj = prediction(env_kwargs, obs[:,step+1,:], adapnets, env, policy)
+
+            predicted_trajs.append(traj)
+            d = np.stack([adapnets[i].draw for i in range(n_agents)])
+
+    else:
+        obs = np.expand_dims(obs, axis=1)
+        mean = np.expand_dims(mean, axis=1)
+    
+        adapnets.append(rls.rls(0.999, theta))
+        for step in range(1000):
+            if step % 100 == 0:
+                print(step)
+            a, a_info, hidden_vec = policy.get_actions_with_prev(obs[step,:], mean[step,:], prev_hiddens)
+            
+            adap_vec = np.concatenate((hidden_vec, obs[step,:]), axis=1)
+            # obs_Y should be k+1 time
+            # hidden_vec should be k time
+            adapnet.update(adap_vec, mean[step+1,:])
+            prev_actions = np.reshape(a, [1, 2])
+            prev_hiddens = np.reshape(hidden_vec, [1, 64])
+
+            adapnet.draw.append(adapnet.theta[6,1])
+            traj = prediction(env_kwargs, obs[step+1,0], adapnet, env, policy)
+
+            predicted_trajs.append(traj)
+            d = np.stack(adapnet.draw)
+
+    for i in range(n_agents):
+        plt.plot(range(step+1), d[i,:])
     plt.show()
-    print("where is my plot")
+    
     return predicted_trajs
 
-def prediction(env_kwargs, x, adapnet, env, policy):
+def prediction(env_kwargs, x, adapnets, env, policy):
     traj = hgail.misc.simulation.Trajectory()
-
+    x = x[:,0,:]
     predict_span = 25
     for i in range(predict_span):
         a, a_info, hidden_vec = policy.get_actions(x)
         #print ('predict_span'+str(i))
         adap_vec = np.concatenate((hidden_vec, x), axis=1)
-        means = adapnet.predict(adap_vec)
+
+        # actions = rnd * np.exp(a_info['log_std']) + means
+        means = np.zeros([22, 2])
+        log_std = np.zeros([22, 2])
+        for i in range(x.shape[0]):
+            means[i] = adapnets[i].predict(np.expand_dims(adap_vec[i], 0))
+            # log_std my need to be changed
+            log_std[i] = np.log(np.std(adapnets[i].theta, axis=0))
 
         rnd = np.random.normal(size=means.shape)
-        # log_std my need to be changed
-        log_std = np.log(np.std(adapnet.theta, axis=0))
-        # actions = means
         actions = rnd * np.exp(log_std) + means
-        # actions = rnd * np.exp(a_info['log_std']) + means
-
-        # a_info["prev_action"] = np.copy(prev_actions)
-        # a_info["mean"] = np.copy(means)
 
         nx, r, dones, e_info = env.step(actions)
         traj.add(x, actions, r, a_info, e_info)
@@ -150,7 +159,7 @@ def mutliagent_simulate(
     dones = [True] * n_agents
     policy.reset(dones)
     
-    for step in range(1000):#max_steps):
+    for step in range(max_steps):
         if render: env.render()
         a, a_info,_ = policy.get_actions(x)
         nx, r, dones, e_info = env.step(a)
@@ -159,6 +168,26 @@ def mutliagent_simulate(
         x = nx
     return traj.flatten()
 
+
+def simulate(env, policy, max_steps, render=False, env_kwargs=dict()):
+    print(max_steps)
+    traj = hgail.misc.simulation.Trajectory()
+    x = env.reset(**env_kwargs)
+    policy.reset()
+    for step in range(max_steps):
+        if render: env.render()
+        a, a_info = policy.get_action(x)
+        nx, r, done, e_info = env.step(a)
+        traj.add(
+            policy.observation_space.flatten(x), 
+            a, 
+            r, 
+            a_info,
+            e_info
+        )
+        if done: break
+        x = nx
+    return traj.flatten()
 
 def collect_trajectories(
         args,  
@@ -195,36 +224,65 @@ def collect_trajectories(
         # collect trajectories
         nids = len(egoids)
 
-        data = validate_utils.get_ground_truth()
+        if args.env_multiagent:
+
+            data = validate_utils.get_multiagent_ground_truth()
+            
         # this is where to get the ego running steps 
-        # for i, egoid in enumerate(egoids):
-        for i in range(10):
-            if i % 100 == 0:
+        
+            sample = [0]
+        else:
+            data = validate_utils.get_ground_truth()
+            total = data['observations'].shape[0]
+
+            sample = np.random.choice(total, 2)
+        # for i in sample:
+        
+        sample = np.random.choice(400, 100)
+        for i in sample:
+        # for i, egoid in enumerate(egoids[sample]):
+            egoid = egoids[i]
+            if i % 10 == 0:
                 sys.stdout.write('\rpid: {} traj: {} / {}'.format(pid, i, nids))
 
             if args.env_multiagent:
                 kwargs = dict()
                 if random_seed:
                     kwargs = dict(random_seed=random_seed+egoid)
-                traj = mutliagent_simulate(
+
                 # traj = online_adaption(
+                #     env, 
+                #     policy, 
+                #     max_steps=max_steps,
+                #     obs=data['observations'],
+                #     mean=data['actions'],
+                #     env_kwargs=kwargs
+                # )
+                traj = mutliagent_simulate(
                     env, 
                     policy, 
                     max_steps=max_steps,
-                    # obs=data['observations'][i, :,:],
-                    # mean=data['actions'][i,:,:],
                     env_kwargs=kwargs
                 )
                 trajlist.append(traj)
             else:
-                traj = simulate(
+                traj = online_adaption(
                     env, 
                     policy, 
                     max_steps=max_steps,
-                    env_kwargs=dict(egoid=egoid, start=starts[egoid])
+                    obs=data['observations'][i, :,:],
+                    mean=data['actions'][i,:,:],
+                    env_kwargs=kwargs
                 )
-                traj['egoid'] = egoid
-                traj['start'] = starts[egoid]
+                trajlist.append(traj)
+                # traj = simulate(
+                #     env, 
+                #     policy, 
+                #     max_steps=max_steps,
+                #     env_kwargs=dict(egoid=egoid, start=starts[egoid])
+                # )
+                # traj['egoid'] = egoid
+                # traj['start'] = starts[egoid]
                 trajlist.append(traj)
 
     return trajlist
@@ -356,7 +414,7 @@ def collect(
 
     utils.write_trajectories(output_filepath, trajs)
 
-def load_egoids(filename, args, n_runs_per_ego_id=1000, env_fn=utils.build_ngsim_env):
+def load_egoids(filename, args, n_runs_per_ego_id=10, env_fn=utils.build_ngsim_env):
     offset = args.env_H + args.env_primesteps
     basedir = os.path.expanduser('~/.julia/v0.6/NGSIM/data/')
     ids_filename = filename.replace('.txt', '-index-{}-ids.h5'.format(offset))
@@ -404,7 +462,7 @@ if __name__ == '__main__':
     parser.add_argument('--n_proc', type=int, default=1)
     parser.add_argument('--exp_dir', type=str, default='../../data/experiments/gail/')
     parser.add_argument('--params_filename', type=str, default='itr_2000.npz')
-    parser.add_argument('--n_runs_per_ego_id', type=int, default=1000)
+    parser.add_argument('--n_runs_per_ego_id', type=int, default=10)
     parser.add_argument('--use_hgail', type=str2bool, default=False)
     parser.add_argument('--use_multiagent', type=str2bool, default=False)
     parser.add_argument('--n_multiagent_trajs', type=int, default=10000)
