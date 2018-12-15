@@ -38,7 +38,8 @@ def online_adaption(
     theta = np.mean(theta)
 
     x = env.reset(**env_kwargs)
-    n_agents = x.shape[0]
+    n_agents = 1
+    # n_agents = x.shape[0]
     dones = [True] * n_agents
     predicted_trajs = []
     policy.reset(dones)
@@ -52,11 +53,13 @@ def online_adaption(
     
         for i in range(n_agents):
             adapnets.append(rls.rls(0.999, theta))
+        
         for step in range(max_steps-1):
             if step % 100 == 0:
                 print(step)
-            a, a_info, hidden_vec = policy.get_actions_with_prev(obs[:,step,:], mean[:, step,:], prev_hiddens)
+            a, a_info, hidden_vec = policy.get_actions_with_prev(obs[:,step,:], prev_actions, prev_hiddens)
 
+            # a, a_info, hidden_vec = policy.get_actions_with_prev(obs[:,step,:], mean[:, step,:], prev_hiddens)
             adap_vec = np.concatenate((np.expand_dims(hidden_vec, axis=1), obs[:,step,:]), axis=2)
             
             for i in range(n_agents):
@@ -66,10 +69,14 @@ def online_adaption(
             prev_actions = np.reshape(a, [-1, 2])
             prev_hiddens = np.reshape(hidden_vec, [-1, 64])
 
-            traj = prediction(env_kwargs, obs[:,step+1,:], adapnets, env, policy)
+            # traj = prediction(env_kwargs, obs[:,step+1,:], adapnets, env, policy)
 
-            predicted_trajs.append(traj)
-            d = np.stack([adapnets[i].draw for i in range(n_agents)])
+            # predicted_trajs.append(traj)
+            # d = np.stack([adapnets[i].draw for i in range(n_agents)])
+
+        for i in range(n_agents):
+            plt.plot(range(step+1), d[i,:])
+            plt.show()
 
     else:
         obs = np.expand_dims(obs, axis=1)
@@ -84,34 +91,37 @@ def online_adaption(
             adap_vec = np.concatenate((hidden_vec, obs[step,:]), axis=1)
             # obs_Y should be k+1 time
             # hidden_vec should be k time
-            adapnet.update(adap_vec, mean[step+1,:])
+            adapnets[0].update(adap_vec, mean[step+1,:])
             prev_actions = np.reshape(a, [1, 2])
             prev_hiddens = np.reshape(hidden_vec, [1, 64])
 
-            adapnet.draw.append(adapnet.theta[6,1])
-            traj = prediction(env_kwargs, obs[step+1,0], adapnet, env, policy)
-
+            adapnets[0].draw.append(adapnets[0].theta[6,1])
+            traj = prediction(env_kwargs, obs[step+1,:], adapnets, env, policy)
+            
             predicted_trajs.append(traj)
-            d = np.stack(adapnet.draw)
+            d = np.stack(adapnets[0].draw)
 
-    for i in range(n_agents):
-        plt.plot(range(step+1), d[i,:])
-    plt.show()
+        for i in range(n_agents):
+            plt.plot(range(step+1), d)
+            plt.show()
+
+
     
     return predicted_trajs
 
 def prediction(env_kwargs, x, adapnets, env, policy):
     traj = hgail.misc.simulation.Trajectory()
-    x = x[:,0,:]
+    # x = x[:,0,:]
     predict_span = 25
     for i in range(predict_span):
         a, a_info, hidden_vec = policy.get_actions(x)
         #print ('predict_span'+str(i))
         adap_vec = np.concatenate((hidden_vec, x), axis=1)
+        # means = np.zeros([22, 2])
+        # log_std = np.zeros([22, 2])
 
-        # actions = rnd * np.exp(a_info['log_std']) + means
-        means = np.zeros([22, 2])
-        log_std = np.zeros([22, 2])
+        means = np.zeros([1, 2])
+        log_std = np.zeros([1, 2])
         for i in range(x.shape[0]):
             means[i] = adapnets[i].predict(np.expand_dims(adap_vec[i], 0))
             # log_std my need to be changed
@@ -119,11 +129,10 @@ def prediction(env_kwargs, x, adapnets, env, policy):
 
         rnd = np.random.normal(size=means.shape)
         actions = rnd * np.exp(log_std) + means
-
         nx, r, dones, e_info = env.step(actions)
         traj.add(x, actions, r, a_info, e_info)
-        if any(dones): break
-        x = nx
+        if any([dones]): break
+        x = np.expand_dims(nx, axis=0)
         
     y = env.reset(**env_kwargs)
 
@@ -201,6 +210,7 @@ def collect_trajectories(
         max_steps,
         use_hgail,
         random_seed):
+    
     env, _, _ = env_fn(args, alpha=0.)
     policy = policy_fn(args, env)
 
@@ -215,7 +225,7 @@ def collect_trajectories(
             policy = policy[0].algo.policy
         else:
             policy.set_param_values(params['policy'])
-        
+
         normalized_env = hgail.misc.utils.extract_normalizing_env(env)
         if normalized_env is not None:
             normalized_env._obs_mean = params['normalzing']['obs_mean']
@@ -238,32 +248,33 @@ def collect_trajectories(
             sample = np.random.choice(total, 2)
         # for i in sample:
         
-        sample = np.random.choice(400, 100)
+        # sample = np.random.choice(400, 100)
         for i in sample:
         # for i, egoid in enumerate(egoids[sample]):
-            egoid = egoids[i]
+            # egoid = egoids[i]
             if i % 10 == 0:
                 sys.stdout.write('\rpid: {} traj: {} / {}'.format(pid, i, nids))
 
+            kwargs = dict()
             if args.env_multiagent:
-                kwargs = dict()
+                
                 if random_seed:
                     kwargs = dict(random_seed=random_seed+egoid)
 
-                # traj = online_adaption(
-                #     env, 
-                #     policy, 
-                #     max_steps=max_steps,
-                #     obs=data['observations'],
-                #     mean=data['actions'],
-                #     env_kwargs=kwargs
-                # )
-                traj = mutliagent_simulate(
+                traj = online_adaption(
                     env, 
                     policy, 
                     max_steps=max_steps,
+                    obs=data['observations'],
+                    mean=data['actions'],
                     env_kwargs=kwargs
                 )
+                # traj = mutliagent_simulate(
+                #     env, 
+                #     policy, 
+                #     max_steps=max_steps,
+                #     env_kwargs=kwargs
+                # )
                 trajlist.append(traj)
             else:
                 traj = online_adaption(
