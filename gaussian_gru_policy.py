@@ -183,6 +183,8 @@ class GaussianGRUPolicy(StochasticPolicy, LayersPowered, Serializable):
     @overrides
     def get_actions(self, observations):
         flat_obs = self.observation_space.flatten_n(observations)
+        # self.prev_actions.shape = np.zeros([1,2], dtype=float)
+        print(flat_obs.shape, self.prev_actions.shape)
         if self.state_include_action:
             assert self.prev_actions is not None
             all_input = np.concatenate([
@@ -191,7 +193,9 @@ class GaussianGRUPolicy(StochasticPolicy, LayersPowered, Serializable):
             ], axis=-1)
         else:
             all_input = flat_obs
+        # print(all_input.shape)
         means, log_stds, hidden_vec = self.f_step_mean_std(all_input, self.prev_hiddens)
+        
         rnd = np.random.normal(size=means.shape)
         actions = rnd * np.exp(log_stds) + means
         prev_actions = self.prev_actions
@@ -200,17 +204,24 @@ class GaussianGRUPolicy(StochasticPolicy, LayersPowered, Serializable):
         agent_info = dict(mean=means, log_std=log_stds)
         if self.state_include_action:
             agent_info["prev_action"] = np.copy(prev_actions)
-        return actions, agent_info, hidden_vec, rnd
+        # return actions, agent_info, hidden_vec
+        return actions, agent_info
 
     def get_actions_with_prev(self, observations, prev_actions, prev_hiddens):
+        if prev_actions is None or prev_hiddens is None:
+            return self.get_actions(observations)
         flat_obs = self.observation_space.flatten_n(observations)
+        # print(flat_obs.shape, prev_actions.shape)
         if self.state_include_action:
+            h, w = flat_obs.shape
             all_input = np.concatenate([
                 flat_obs,
-                prev_actions
+                np.reshape(prev_actions, [h,2])
+                # np.zeros([h,2], dtype=float)
             ], axis=-1)
         else:
             all_input = flat_obs
+        # print(all_input.shape)
         means, log_stds, hidden_vec = self.f_step_mean_std(all_input, prev_hiddens)
         rnd = np.random.normal(size=means.shape)
         actions = rnd * np.exp(log_stds) + means
@@ -222,6 +233,28 @@ class GaussianGRUPolicy(StochasticPolicy, LayersPowered, Serializable):
             agent_info["prev_action"] = np.copy(prev_actions)
         return actions, agent_info, hidden_vec
 
+    def get_actions_no_groundtruth(self, observations):
+        flat_obs = self.observation_space.flatten_n(observations)
+        # self.prev_actions.shape = np.zeros([1,2], dtype=float)
+        if self.state_include_action:
+            assert self.prev_actions is not None
+            all_input = np.concatenate([
+                flat_obs,
+                self.prev_actions
+            ], axis=-1)
+        else:
+            all_input = flat_obs
+        # print(all_input.shape)
+        means, log_stds, hidden_vec = self.f_step_mean_std(all_input, self.prev_hiddens)
+        rnd = np.random.normal(size=means.shape)
+        actions = rnd * np.exp(log_stds) + means
+        prev_actions = self.prev_actions
+        self.prev_actions = self.action_space.flatten_n(actions)
+        self.prev_hiddens = hidden_vec
+        agent_info = dict(mean=means, log_std=log_stds)
+        if self.state_include_action:
+            agent_info["prev_action"] = np.copy(prev_actions)
+        return actions, agent_info, hidden_vec
 
     @property
     @overrides

@@ -44,7 +44,7 @@ NGSIM_FILENAME_TO_ID = {
     'trajdata_i80_trajectories-0515-0530.txt': 6
 }'''
 NGSIM_FILENAME_TO_ID = {
-    # 'trajdata_i101_trajectories-0750am-0805am.txt': 1,
+    'trajdata_i101_trajectories-0750am-0805am.txt': 1,
     'trajdata_i101-22agents-0750am-0805am.txt' : 1
 }
 
@@ -188,8 +188,6 @@ def build_critic(args, data, env, writer=None):
         batch_size=args.critic_batch_size,
         flat_recurrent=args.policy_recurrent
     )
-    import pdb
-    pdb.set_trace()
     critic_network = ObservationActionMLP(
         name='critic', 
         hidden_layer_dims=args.critic_hidden_layer_dims,
@@ -245,7 +243,6 @@ def build_policy(args, env, latent_sampler=None):
                 output_nonlinearity=None,
                 learn_std=True
             )
-            import pdb
         else:
             print("GaussianMLPPolicy")
             policy = GaussianMLPPolicy(

@@ -1,18 +1,17 @@
-
 import argparse
 import h5py
 import multiprocessing as mp
 import numpy as np
-import os
+import os 
 import sys
 import tensorflow as tf
 import time
 
-backend ='TkAgg'
+backend = 'Agg' if sys.platform == 'linux' else 'TkAgg'
 import matplotlib
 matplotlib.use(backend)
 import matplotlib.pyplot as plt
-matplotlib.use('TkAgg')
+
 from contexttimer import Timer
 
 import hgail.misc.simulation
@@ -21,217 +20,13 @@ import hgail.misc.utils
 import hyperparams
 import utils
 from utils import str2bool
-import rls, pdb
 import validate_utils
 
-plt.style.use("ggplot")
-
-def online_adaption(
-        env, 
-        policy, 
-        max_steps,  
-        obs,
-        mean,
-        render=False, 
-        env_kwargs=dict()):
-
-
-    theta = np.load('theta.npy')
-    theta = np.mean(theta)
-
-    x = env.reset(**env_kwargs)
-    n_agents = 1
-    # n_agents = x.shape[0]
-    dones = [True] * n_agents
-    predicted_trajs = []
-    policy.reset(dones)
-    prev_actions, prev_hiddens = None, None
-    adapnets = []
-
-    max_steps = min(1000, obs.shape[1])
-    # max_steps = min(1000, obs.shape[1])
-    if n_agents > 1:
-        
-        obs = np.expand_dims(obs, axis=2)
-        mean = np.expand_dims(mean, axis=2)
-        prev_hiddens = np.zeros([22,64])
-
-        for i in range(n_agents):
-            adapnets.append(rls.rls(0.999, theta))
-        for step in range(max_steps-1):
-            if step % 100 == 0:
-                print(step)
-            a, a_info, hidden_vec = policy.get_actions_with_prev(obs[:,step,:], mean[:, step,:], prev_hiddens)
-
-            # print('prev_hiddens.shape={}'.format(obs[:,step,:].shape))
-            adap_vec = np.concatenate((np.expand_dims(hidden_vec, axis=1), np.expand_dims(prev_hiddens, axis=1), obs[:,step,:]), axis=2)
-            
-            for i in range(n_agents):
-                adapnets[i].update(adap_vec[i], mean[i,step+1,:])
-                adapnets[i].draw.append(adapnets[i].theta[6,1])
-
-            prev_actions = np.reshape(a, [-1, 2])
-            prev_hiddens = np.reshape(hidden_vec, [-1, 64])
-
-            traj = prediction(env_kwargs, obs[:,step+1,:], adapnets, env, policy, prev_hiddens)
-
-            predicted_trajs.append(traj)
-            d = np.stack([adapnets[i].draw for i in range(n_agents)])
-
-        for i in range(n_agents):
-            plt.plot(range(step+1), d[i,:])
-        plt.show()
-
-    else:
-        obs = np.expand_dims(obs, axis=1)
-        mean = np.expand_dims(mean, axis=1)
-    
-        adapnets.append(rls.rls(0.999, theta))
-
-        prev_hiddens = np.zeros([1, 64])
-        for step in range(1000):
-            if step % 100 == 0:
-                print(step)
-            # print(obs.shape)
-            a, a_info, hidden_vec = policy.get_actions_with_prev(obs[step,:], mean[step,:], prev_hiddens)
-            # a, a_info, hidden_vec = policy.get_actions_with_prev(obs[step,:], prev_actions, prev_hiddens)
-            
-            adap_vec = np.concatenate((hidden_vec, prev_hiddens, obs[step,:]), axis=1)
-            # adap_vec = np.concatenate((hidden_vec, obs[step,:]), axis=1)
-            # obs_Y should be k+1 time
-            # hidden_vec should be k time
-            adapnets[0].update(adap_vec, mean[step+1,:])
-            prev_actions = np.reshape(a, [1, 2])
-            prev_hiddens = np.reshape(hidden_vec, [1, 64])
-
-            adapnets[0].draw.append(adapnets[0].theta[6,1])
-            traj = prediction(env_kwargs, obs[step+1,:], adapnets, env, policy, prev_hiddens)
-            
-            predicted_trajs.append(traj)
-            d = np.stack(adapnets[0].draw)
-
-        for i in range(1):
-            plt.plot(range(1000), d)
-
-        # from matplotlib2tikz import save as tikz_save
-
-        # tikz_save("notconverge.tex")
-        plt.show()
-
-
-    
-    return predicted_trajs
-
-# def prediction(env_kwargs, x, adapnets, env, policy, prev_hiddens):
-#     traj = hgail.misc.simulation.Trajectory()
-#     x = x[:,0,:]
-#     predict_span = 200
-#     for i in range(predict_span):
-#         a, a_info, hidden_vec = policy.get_actions(x)
-#         #print ('predict_span'+str(i))
-#         # print('prev_hiddens.shape={}'.format(x.shape))
-#         prev_hiddens = prev_hiddens.reshape([22, 64])
-#         adap_vec = np.concatenate((hidden_vec, prev_hiddens, x), axis=1)
-
-#         # actions = rnd * np.exp(a_info['log_std']) + means
-#         means = np.zeros([22, 2])
-#         log_std = np.zeros([22, 2])
-#         for i in range(x.shape[0]):
-#             means[i] = adapnets[i].predict(np.expand_dims(adap_vec[i], 0))
-#             # log_std my need to be changed
-#             log_std[i] = np.log(np.std(adapnets[i].theta, axis=0))
-
-#         prev_hiddens = hidden_vec
-
-#         rnd = np.random.normal(size=means.shape)
-#         actions = rnd * np.exp(log_std) + means
-
-#         nx, r, dones, e_info = env.step(actions)
-#         traj.add(x, actions, r, a_info, e_info)
-#         if any(dones): break
-#         x = nx
-        
-#     y = env.reset(**env_kwargs)
-
-#     return traj.flatten()
-
-def prediction(env_kwargs, x, adapnets, env, policy, prev_hiddens):
-    traj = hgail.misc.simulation.Trajectory()
-    
-    predict_span = 25
-    for i in range(predict_span):
-        a, a_info, hidden_vec = policy.get_actions(x)
-        # print(hidden_vec.shape, prev_hiddens.shape, x.shape)
-        adap_vec = np.concatenate((hidden_vec, prev_hiddens, x), axis=1)
-
-        # adap_vec = np.concatenate((hidden_vec, x), axis=1)
-
-        means = np.zeros([x.shape[0], 2])
-        log_std = np.zeros([x.shape[0], 2])
-        for i in range(x.shape[0]):
-            means[i] = adapnets[i].predict(np.expand_dims(adap_vec[i], 0))
-            
-            log_std[i] = np.log(np.std(adapnets[i].theta, axis=0))
-
-        prev_hiddens = hidden_vec
-
-        rnd = np.random.normal(size=means.shape)
-        actions = rnd * np.exp(log_std) + means
-        nx, r, dones, e_info = env.step(actions)
-        traj.add(x, actions, r, a_info, e_info)
-        if any([dones]): break
-        # x = np.expand_dims(nx, axis=0)
-        
-    y = env.reset(**env_kwargs)
-
-    return traj.flatten()
-
-def mutliagent_simulate(
-        env, 
-        policy, 
-        max_steps, 
-        render=False, 
-        env_kwargs=dict()):
-    '''
-    Description:
-        - simulates a vectorized agent in a vectorized environment 
-    Args:
-        - env: env to simulate in, must be vectorized
-        - policy: policy, must be vectorized
-        - max_steps: max steps in env per episode
-        - render: display visual
-        - env_kwargs: key word arguments to pass to env 
-    Returns:
-        - a dictionary object with a bit of an unusual format:
-            each value in the dictionary is an array with shape 
-            (timesteps, n_env / n_veh, shape of attribute)
-            i.e., first dim corresponds to time 
-            second dim to the index of the agent
-            third dim is for the attribute itself
-    '''
-    
-    x = env.reset(**env_kwargs)
-    n_agents = x.shape[0]
-    traj = hgail.misc.simulation.Trajectory()
-    dones = [True] * n_agents
-    policy.reset(dones)
-    
-    for step in range(max_steps):
-        if render: env.render()
-        a, a_info,_ = policy.get_actions(x)
-        nx, r, dones, e_info = env.step(a)
-        traj.add(x, a, r, a_info, e_info)
-        if any(dones): break
-        x = nx
-    return traj.flatten()
-
-
 def simulate(env, policy, max_steps, render=False, env_kwargs=dict()):
-    print(max_steps)
     traj = hgail.misc.simulation.Trajectory()
     x = env.reset(**env_kwargs)
     policy.reset()
-    for step in range(max_steps):
+    for step in range(100):
         if render: env.render()
         a, a_info = policy.get_action(x)
         nx, r, done, e_info = env.step(a)
@@ -242,7 +37,52 @@ def simulate(env, policy, max_steps, render=False, env_kwargs=dict()):
             a_info,
             e_info
         )
+        # print(step)
         if done: break
+        x = nx
+    return traj.flatten()
+
+def mutliagent_simulate(
+        env, 
+        policy, 
+        max_steps,
+        gt,  
+        render=False, 
+        # gt,
+        env_kwargs=dict()):
+    '''
+    Description:
+        - simulates a vectorized agent in a vectorized environment 
+
+    Args:
+        - env: env to simulate in, must be vectorized
+        - policy: policy, must be vectorized
+        - max_steps: max steps in env per episode
+        - render: display visual
+        - env_kwargs: key word arguments to pass to env 
+
+    Returns:
+        - a dictionary object with a bit of an unusual format:
+            each value in the dictionary is an array with shape 
+            (timesteps, n_env / n_veh, shape of attribute)
+            i.e., first dim corresponds to time 
+            second dim to the index of the agent
+            third dim is for the attribute itself
+    '''
+    
+    x = env.reset(**env_kwargs)
+    x = gt
+    print(gt.shape)
+    n_agents = 22
+    traj = hgail.misc.simulation.Trajectory()
+    dones = [True] * n_agents
+    policy.reset(dones)
+    for step in range(max_steps):
+        if render: env.render()
+        a, a_info = policy.get_actions(x)
+        nx, r, dones, e_info = env.step(a)
+        traj.add(x, a, r, a_info, e_info)
+        if any(dones): break
         x = nx
     return traj.flatten()
 
@@ -258,10 +98,8 @@ def collect_trajectories(
         max_steps,
         use_hgail,
         random_seed):
-    
     env, _, _ = env_fn(args, alpha=0.)
     policy = policy_fn(args, env)
-
     with tf.Session() as sess:
         # initialize variables
         sess.run(tf.global_variables_initializer())
@@ -273,79 +111,46 @@ def collect_trajectories(
             policy = policy[0].algo.policy
         else:
             policy.set_param_values(params['policy'])
-
         normalized_env = hgail.misc.utils.extract_normalizing_env(env)
         if normalized_env is not None:
             normalized_env._obs_mean = params['normalzing']['obs_mean']
             normalized_env._obs_var = params['normalzing']['obs_var']
 
+        data = validate_utils.get_multiagent_ground_truth()
+        # print(data.keys())
+        obs = data['observations']
+        # print(data['observations'].shape)
+        # (22, 331, 66)
+
+        egoids = [2, 5, 8, 9, 10, 12, 13, 14, 20, 21, 22, 23, 25, 26, 27, 31, 32, 34, 37, 39, 40, 43]
         # collect trajectories
         nids = len(egoids)
+        for t in [97, 224]:
+            # for i, egoid in enumerate(egoids):
+                # sys.stdout.write('\rpid: {} traj: {} / {}'.format(pid, i, nids))
 
-        # if args.env_multiagent:
-
-        #     data = validate_utils.get_multiagent_ground_truth()
-            
-        # # this is where to get the ego running steps 
-        
-        #     sample = [0]
-        # else:
-        data = validate_utils.get_ground_truth()
-        total = data['observations'].shape[0]
-
-        # sample = np.random.choice(total, 2)
-        sample = [7, 208]
-        for i in sample:
-        # for i, egoid in enumerate(egoids):
-        # sample = np.random.choice(400, 100)
-        # for i in sample: # this is for 22 agents with(out) x
-        # for i, egoid in enumerate(egoids[sample]):
-            # egoid = egoids[i]
-            if i % 100 == 0:
-                sys.stdout.write('\rpid: {} traj: {} / {}'.format(pid, i, nids))
-
-            kwargs = dict()
-            if args.env_multiagent:
-                # I add not because single simulation has no orig_x etc.
-                
-                # if random_seed:
-                #     kwargs = dict(random_seed=random_seed+egoid)
-
-                # traj = online_adaption(
-                #     env, 
-                #     policy, 
-                #     max_steps=max_steps,
-                #     obs=data['observations'],
-                #     mean=data['actions'],
-                #     env_kwargs=kwargs
-                # )
-                print('im here')
-                traj = mutliagent_simulate(
-                    env, 
-                    policy, 
-                    max_steps=max_steps,
-                    env_kwargs=kwargs
-                )
-                trajlist.append(traj)
-            else:
-                traj = online_adaption(
-                    env, 
-                    policy, 
-                    max_steps=max_steps,
-                    obs=data['observations'][i, :,:],
-                    mean=data['actions'][i,:,:],
-                    env_kwargs=kwargs
-                )
-                trajlist.append(traj)
-                # traj = simulate(
-                #     env, 
-                #     policy, 
-                #     max_steps=max_steps,
-                #     env_kwargs=dict(egoid=egoid, start=starts[egoid])
-                # )
-                # traj['egoid'] = egoid
-                # traj['start'] = starts[egoid]
-                # trajlist.append(traj)
+                if args.env_multiagent:
+                    kwargs = dict()
+                    if random_seed:
+                        kwargs = dict(random_seed=random_seed+egoid)
+                    traj = mutliagent_simulate(
+                        env, 
+                        policy, 
+                        max_steps=max_steps,
+                        gt=obs[:, t, :],
+                        env_kwargs=kwargs
+                    )
+                    trajlist.append(traj)
+                else:
+                    traj = simulate(
+                        env, 
+                        policy, 
+                        max_steps=max_steps,
+                        env_kwargs=dict(egoid=egoid, start=starts[egoid])
+                    )
+                    traj['egoid'] = egoid
+                    traj['start'] = starts[egoid]
+                    trajlist.append(traj)
 
     return trajlist
 
@@ -427,7 +232,7 @@ def single_process_collect_trajectories(
         egoids, 
         starts,
         trajlist, 
-        n_proc,
+        1,
         env_fn,
         policy_fn,
         max_steps,
@@ -456,10 +261,11 @@ def collect(
     # load information relevant to the experiment
     params_filepath = os.path.join(exp_dir, 'imitate/log/{}'.format(params_filename))
     params = hgail.misc.utils.load_params(params_filepath)
+
     # validation setup 
     validation_dir = os.path.join(exp_dir, 'imitate', 'validation')
     utils.maybe_mkdir(validation_dir)
-    output_filepath = os.path.join(validation_dir, '{}_APSGAIL.npz'.format(
+    output_filepath = os.path.join(validation_dir, '{}_trajectories.npz'.format(
         args.ngsim_filename.split('.')[0]))
 
     with Timer():
@@ -476,7 +282,7 @@ def collect(
 
     utils.write_trajectories(output_filepath, trajs)
 
-def load_egoids(filename, args, n_runs_per_ego_id=10, env_fn=utils.build_ngsim_env):
+def load_egoids(filename, args, n_runs_per_ego_id=1, env_fn=utils.build_ngsim_env):
     offset = args.env_H + args.env_primesteps
     basedir = os.path.expanduser('~/.julia/v0.6/NGSIM/data/')
     ids_filename = filename.replace('.txt', '-index-{}-ids.h5'.format(offset))
@@ -524,7 +330,7 @@ if __name__ == '__main__':
     parser.add_argument('--n_proc', type=int, default=1)
     parser.add_argument('--exp_dir', type=str, default='../../data/experiments/gail/')
     parser.add_argument('--params_filename', type=str, default='itr_2000.npz')
-    parser.add_argument('--n_runs_per_ego_id', type=int, default=10)
+    parser.add_argument('--n_runs_per_ego_id', type=int, default=1)
     parser.add_argument('--use_hgail', type=str2bool, default=False)
     parser.add_argument('--use_multiagent', type=str2bool, default=False)
     parser.add_argument('--n_multiagent_trajs', type=int, default=10000)
@@ -532,7 +338,6 @@ if __name__ == '__main__':
     parser.add_argument('--random_seed', type=int, default=None)
     parser.add_argument('--n_envs', type=int, default=None)
     parser.add_argument('--remove_ngsim_vehicles', type=str2bool, default=False)
-    # parser.add_argument('--lbd', type=float, default=0.99)
 
     run_args = parser.parse_args()
 
@@ -547,14 +352,25 @@ if __name__ == '__main__':
     else:
         collect_fn = parallel_collect_trajectories
 
+    # Raunak commented this out since i80 trajectories not required for validation
+#    filenames = [
+#        "trajdata_i101_trajectories-0750am-0805am.txt",
+#        "trajdata_i101_trajectories-0805am-0820am.txt",
+#        "trajdata_i101_trajectories-0820am-0835am.txt",
+#        "trajdata_i80_trajectories-0400-0415.txt",
+#        "trajdata_i80_trajectories-0500-0515.txt",
+#        "trajdata_i80_trajectories-0515-0530.txt"
+#    ]
+
     filenames = [
         "trajdata_i101_trajectories-0750am-0805am.txt"
+        # "trajdata_i101_trajectories-0805am-0820am.txt",
+        # "trajdata_i101_trajectories-0820am-0835am.txt"
     ]
- 
+    args.env_H = 200
 
     if run_args.n_envs:
         args.n_envs = run_args.n_envs
-    args.env_H = 200
     sys.stdout.write('{} vehicles with H = {}'.format(args.n_envs, args.env_H))
             
     for fn in filenames:
@@ -572,7 +388,6 @@ if __name__ == '__main__':
             starts,
             args,
             exp_dir=run_args.exp_dir,
-            max_steps=200,
             params_filename=run_args.params_filename,
             use_hgail=run_args.use_hgail,
             n_proc=run_args.n_proc,

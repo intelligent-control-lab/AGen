@@ -8,7 +8,7 @@ class rls(object):
 	def __init__(self, lbd, theta):
 
 		self.lbd = lbd
-		self.nn_dim = 131 # 64 # here you must add bias # hidden 64 + observe 66 + bias 1= 131
+		self.nn_dim = 195 # 64 # here you must add bias # hidden 64 + observe 66 + bias 1= 131
 		self.y_dim = 2
 		self.draw = []
 
