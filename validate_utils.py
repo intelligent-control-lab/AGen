@@ -4,6 +4,7 @@ import utils
 import tensorflow as tf
 import hyperparams
 from julia_env.julia_env import JuliaEnv
+from my_gaussian_gru_policy import myGaussianGRUPolicy
 
 NGSIM_FILENAME_TO_ID = {
     'trajdata_i101_trajectories-0750am-0805am.txt': 1,
@@ -24,7 +25,6 @@ def load_validate_data(
     
     # loading varies based on dataset type
     x, feature_names = utils.load_x_feature_names(filepath, ngsim_filename)
-    print(feature_names)
 
     # no need to flatten 
     obs = x
@@ -67,6 +67,16 @@ def normalize_range(x, low, high):
     x = np.clip(x, -1, 1)
     return x
 
+def build_policy(args, env, latent_sampler=None):
+    print("GaussianGRUPolicy")
+    policy = myGaussianGRUPolicy(
+        name="policy",
+        env_spec=env.spec,
+        hidden_dim=args.recurrent_hidden_dim,
+        output_nonlinearity=None,
+        learn_std=True
+    )
+    return policy
 
 def get_ground_truth():
 	# filepath = '../../data/trajectories/ngsim_22agents.h5'

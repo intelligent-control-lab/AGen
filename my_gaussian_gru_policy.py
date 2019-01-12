@@ -12,7 +12,7 @@ from rllab.misc.overrides import overrides
 from rllab.misc import logger
 
 
-class GaussianGRUPolicy(StochasticPolicy, LayersPowered, Serializable):
+class myGaussianGRUPolicy(StochasticPolicy, LayersPowered, Serializable):
     def __init__(
             self,
             name,
@@ -34,7 +34,7 @@ class GaussianGRUPolicy(StochasticPolicy, LayersPowered, Serializable):
         """
         with tf.variable_scope(name):
             Serializable.quick_init(self, locals())
-            super(GaussianGRUPolicy, self).__init__(env_spec)
+            super(myGaussianGRUPolicy, self).__init__(env_spec)
 
             obs_dim = env_spec.observation_space.flat_dim
             action_dim = env_spec.action_space.flat_dim
@@ -184,7 +184,7 @@ class GaussianGRUPolicy(StochasticPolicy, LayersPowered, Serializable):
     def get_actions(self, observations):
         flat_obs = self.observation_space.flatten_n(observations)
         # self.prev_actions.shape = np.zeros([1,2], dtype=float)
-        print(flat_obs.shape, self.prev_actions.shape)
+        
         if self.state_include_action:
             assert self.prev_actions is not None
             all_input = np.concatenate([
@@ -204,8 +204,8 @@ class GaussianGRUPolicy(StochasticPolicy, LayersPowered, Serializable):
         agent_info = dict(mean=means, log_std=log_stds)
         if self.state_include_action:
             agent_info["prev_action"] = np.copy(prev_actions)
-        # return actions, agent_info, hidden_vec
-        return actions, agent_info
+        return actions, agent_info, hidden_vec
+        # return actions, agent_info
 
     def get_actions_with_prev(self, observations, prev_actions, prev_hiddens):
         if prev_actions is None or prev_hiddens is None:
@@ -226,29 +226,6 @@ class GaussianGRUPolicy(StochasticPolicy, LayersPowered, Serializable):
         rnd = np.random.normal(size=means.shape)
         actions = rnd * np.exp(log_stds) + means
         #prev_actions = self.prev_actions
-        self.prev_actions = self.action_space.flatten_n(actions)
-        self.prev_hiddens = hidden_vec
-        agent_info = dict(mean=means, log_std=log_stds)
-        if self.state_include_action:
-            agent_info["prev_action"] = np.copy(prev_actions)
-        return actions, agent_info, hidden_vec
-
-    def get_actions_no_groundtruth(self, observations):
-        flat_obs = self.observation_space.flatten_n(observations)
-        # self.prev_actions.shape = np.zeros([1,2], dtype=float)
-        if self.state_include_action:
-            assert self.prev_actions is not None
-            all_input = np.concatenate([
-                flat_obs,
-                self.prev_actions
-            ], axis=-1)
-        else:
-            all_input = flat_obs
-        # print(all_input.shape)
-        means, log_stds, hidden_vec = self.f_step_mean_std(all_input, self.prev_hiddens)
-        rnd = np.random.normal(size=means.shape)
-        actions = rnd * np.exp(log_stds) + means
-        prev_actions = self.prev_actions
         self.prev_actions = self.action_space.flatten_n(actions)
         self.prev_hiddens = hidden_vec
         agent_info = dict(mean=means, log_std=log_stds)
