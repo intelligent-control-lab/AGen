@@ -72,7 +72,6 @@ def online_adaption(
 
         if adapt_steps == 1:
             adap_vec = hidden_vec
-            print("one step")
         else:
             adap_vec = np.concatenate((hidden_vec, prev_hiddens, obs[:,step,:]), axis=1)
 
