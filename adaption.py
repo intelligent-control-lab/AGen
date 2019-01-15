@@ -62,13 +62,17 @@ def online_adaption(
     for i in range(n_agents):
         adapnets.append(rls.rls(lbd, theta, param_length, 2))
 
+    avg = 0
     for step in range(max_steps-1):
         if step % 100 == 0:
             print(step)
+
+        start = time.time()
         a, a_info, hidden_vec = policy.get_actions_with_prev(obs[:,step,:], mean[:, step,:], prev_hiddens)
 
         if adapt_steps == 1:
             adap_vec = hidden_vec
+            print("one step")
         else:
             adap_vec = np.concatenate((hidden_vec, prev_hiddens, obs[:,step,:]), axis=1)
 
@@ -84,7 +88,10 @@ def online_adaption(
 
         predicted_trajs.append(traj)
         d = np.stack([adapnets[i].draw for i in range(n_agents)])
+        end = time.time()
+        avg += (start - end)
 
+    print(avg / (max_steps-1))
     for i in range(n_agents):
         plt.plot(range(step+1), d[i,:])
     plt.show()
@@ -93,7 +100,7 @@ def online_adaption(
 
 def prediction(env_kwargs, x, adapnets, env, policy, prev_hiddens, n_agents, adapt_steps):
     traj = hgail.misc.simulation.Trajectory()
-    predict_span = 25
+    predict_span = 200
     for i in range(predict_span):
         a, a_info, hidden_vec = policy.get_actions(x)
 
@@ -184,6 +191,7 @@ def collect_trajectories(
                 lbd=lbd,
                 adapt_steps=adapt_steps
             )
+            trajlist.append(traj)
         else:
             for i in sample:
             
