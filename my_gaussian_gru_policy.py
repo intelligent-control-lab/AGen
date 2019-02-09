@@ -193,7 +193,7 @@ class myGaussianGRUPolicy(StochasticPolicy, LayersPowered, Serializable):
             ], axis=-1)
         else:
             all_input = flat_obs
-        # print(all_input.shape)
+
         means, log_stds, hidden_vec = self.f_step_mean_std(all_input, self.prev_hiddens)
         
         rnd = np.random.normal(size=means.shape)
@@ -205,9 +205,9 @@ class myGaussianGRUPolicy(StochasticPolicy, LayersPowered, Serializable):
         if self.state_include_action:
             agent_info["prev_action"] = np.copy(prev_actions)
         return actions, agent_info, hidden_vec
-        # return actions, agent_info
 
     def get_actions_with_prev(self, observations, prev_actions, prev_hiddens):
+        # for getting back to hidden vector and action prediction before prediction
         if prev_actions is None or prev_hiddens is None:
             return self.get_actions(observations)
         flat_obs = self.observation_space.flatten_n(observations)
@@ -221,11 +221,11 @@ class myGaussianGRUPolicy(StochasticPolicy, LayersPowered, Serializable):
             ], axis=-1)
         else:
             all_input = flat_obs
-        # print(all_input.shape)
+        
         means, log_stds, hidden_vec = self.f_step_mean_std(all_input, prev_hiddens)
         rnd = np.random.normal(size=means.shape)
         actions = rnd * np.exp(log_stds) + means
-        #prev_actions = self.prev_actions
+        
         self.prev_actions = self.action_space.flatten_n(actions)
         self.prev_hiddens = hidden_vec
         agent_info = dict(mean=means, log_std=log_stds)

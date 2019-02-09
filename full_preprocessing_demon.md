@@ -112,6 +112,16 @@ cd ../src
 #change line 205 of .julia/v0.6/NGSIM/src/trajdata.jl" to outpath = Pkg.dir("NGSIM", "data", "trajdata_"*splitdir(filename)[2])
 
 ##Create trajectories from the data
+## convert_raw_ngsim_to_trajdatas() is the first step to preprocess raw NGSim data.
+## target data is in YOUPATH/.julia/v0.6/NGSIM/data
+## the script conatining this function is in YOUPATH/.julia/v0.6/NGSIM/src/trajdata.jl
+
+## please change/add name of holomatic files in 
+## TRAJDATA_PATHS in trajdata.jl and 
+## NGSIM_TRAJDATA_PATHS in ngsim_trajdata.jl
+
+## after successfully running, you get trajdata_+"ngsim_file_name".txt
+
 cd ../data
 julia
   >> using NGSIM
@@ -183,10 +193,30 @@ julia
 
 cd ~/ngsim_env/scripts
 
+## this is the second part for preprocessing NGSim data
+## script is in YOURPATH/ngsim_env/scripts/
+## this function is mainly about extract_ngsim_features() at the bottom. 
+## please change output_filename and n_expert_files based on holomatic data. 
+## output path is YOURPATH/ngsim_env/data/trajectories/
 julia extract_ngsim_demonstrations.jl
 #code references both ngsim.h5 and ngsim_all.h5, so make a copy?
 cd ../data/trajectories
 cp ngsim_all.h5 ngsim.h5
+
+# for multi-agent ground truth generation
+## first please analysis through original NGSim to see which vehicles overlap at the same time
+## this is just simple visualization
+## pick a time span where there are multiple agents 
+## please see example in multiagent_extract.py
+
+## pick these data out to firm a new .txt and start from first part of the preprocess
+## please note to modify 'offset' value in extract_ngsim_demonstrations.jl
+## this variable controls the starting point, time before that will be ignored
+
+## preprocessed data for 22 agents ground truth in i101 NGSim is in ./22agentGroundTruth
+## please put .h5 file to its path
+
+
 ```
 Congratulations!! You have completed the installation process. Navigate back to main [readme](https://github.com/sisl/ngsim_env/blob/master/README.md)
 page and look at the 'Train and run a single agent GAIL policy:' section to train a policy

@@ -122,7 +122,7 @@ def build_ngsim_env(
         args,
         exp_dir='/tmp', 
         alpha=0.001,
-        vectorize=False,
+        vectorize=True,
         render_params=None,
         videoMaking=False):
     basedir = os.path.expanduser('~/.julia/v0.6/NGSIM/data')
@@ -164,7 +164,7 @@ def build_ngsim_env(
     else:
         env_id = 'NGSIMEnv'
         normalize_wrapper = normalize_env
-
+    print(env_params)
     env = JuliaEnv(
         env_id=env_id,
         env_params=env_params,
@@ -217,7 +217,6 @@ def build_policy(args, env, latent_sampler=None):
                 dim=args.latent_dim
             )
         if args.policy_recurrent:
-            print("I'm using GaussianLatentVarGRUPolicy")
             policy = GaussianLatentVarGRUPolicy(
                 name="policy",
                 latent_sampler=latent_sampler,

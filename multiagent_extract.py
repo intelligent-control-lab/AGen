@@ -46,11 +46,14 @@ for pid in agents:
 	start.append(s)
 	end.append(d)
 	print(id2span[str(pid)])
+pdb.set_trace()
 start = max(start)
 end = min(end)
 
+# frame start-end 8-571
+# 22 agents period 120 - 450
 with open(path, 'r') as f:
-	with open('i101_trajectories-0750am-0800am.txt', 'w+') as g:
+	with open('i101_22agents-0750am-0800am.txt', 'w+') as g:
 		for raw_data in f:
 			data = raw_data.split()
 			vid = data[0]

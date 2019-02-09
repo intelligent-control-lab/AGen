@@ -124,6 +124,7 @@ def prediction(env_kwargs, x, adapnets, env, policy, prev_hiddens, n_agents, ada
         if any(dones): break
         x = nx
         
+    # this should be delete and replaced
     y = env.reset(**env_kwargs)
 
     return traj.flatten()
@@ -327,7 +328,7 @@ def collect(
     # validation setup 
     validation_dir = os.path.join(exp_dir, 'imitate', 'validation')
     utils.maybe_mkdir(validation_dir)
-    output_filepath = os.path.join(validation_dir, '{}_APSGAIL.npz'.format(
+    output_filepath = os.path.join(validation_dir, '{}_AGen.npz'.format(
         args.ngsim_filename.split('.')[0]))
 
     with Timer():

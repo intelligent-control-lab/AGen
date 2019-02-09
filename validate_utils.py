@@ -179,23 +179,3 @@ def build_ngsim_env(
     low, high = env.action_space.low, env.action_space.high
     env = None
     return env, low, high
-
-# 'relative_offset', 'relative_heading', 'velocity', 'length',
-# 'width', 'lane_curvature', 'markerdist_left', 'markerdist_right',
-# 'accel' 8 , 'jerk', 'turn_rate_global' 10, 'angular_rate_global'11,
-# 'turn_rate_frenet'12, 'angular_rate_frenet'13, 'timegap',
-# 'timegap_is_avail', 'time_to_collision',
-# 'time_to_collision_is_avail', 'is_colliding', 'out_of_lane',
-# 'negative_velocity', 'distance_road_edge_left',
-# 'distance_road_edge_right', 'lidar_1', 'lidar_2', 'lidar_3',
-# 'lidar_4', 'lidar_5', 'lidar_6', 'lidar_7', 'lidar_8', 'lidar_9',
-# 'lidar_10', 'lidar_11', 'lidar_12', 'lidar_13', 'lidar_14',
-# 'lidar_15', 'lidar_16', 'lidar_17', 'lidar_18', 'lidar_19',
-# 'lidar_20', 'rangerate_lidar_1', 'rangerate_lidar_2',
-# 'rangerate_lidar_3', 'rangerate_lidar_4', 'rangerate_lidar_5',
-# 'rangerate_lidar_6', 'rangerate_lidar_7', 'rangerate_lidar_8',
-# 'rangerate_lidar_9', 'rangerate_lidar_10', 'rangerate_lidar_11',
-# 'rangerate_lidar_12', 'rangerate_lidar_13', 'rangerate_lidar_14',
-# 'rangerate_lidar_15', 'rangerate_lidar_16', 'rangerate_lidar_17',
-# 'rangerate_lidar_18', 'rangerate_lidar_19', 'rangerate_lidar_20',
-# 'fore_fore_dist', 'fore_fore_relative_vel', 'fore_fore_accel'
