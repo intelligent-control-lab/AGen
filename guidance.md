@@ -30,4 +30,9 @@ check whether pretrained GAN is valid
 
 
 ## Data Generation
-output .npz file will be in YOURPATH/ngsim_env/data/experiments/multiagent_curr/imitate
+output .npz file will be in YOURPATH/ngsim_env/data/experiments/multiagent_curr/imitate/
+
+## Data Analysis
+a reference analysis example see data_analysis.ipynb
+
+
